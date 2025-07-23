@@ -44,10 +44,11 @@ services:
   service-io:
     build: .
     depends_on: [ nats-1, nats-2, nats-3 ]
+    restart: on-failure
     environment:
       NATS_URL: nats://nats-1:4222            # reachable inside compose network
       LISTEN_ADDR: ":9090"
-      ADAPTER_MAP_JSON: '{"random":"adapter-rand:latest"}'
+      ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest"}'
       DO_REGISTRY_TOKEN: "dop_v1_…7387"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

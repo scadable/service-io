@@ -3,6 +3,7 @@ package docker
 
 import (
 	"context"
+	"io"
 
 	types "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -39,6 +40,10 @@ func (c *Client) RunAdapter(
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 
+	if err := c.ensureImage(ctx, image); err != nil {
+		return err
+	}
+
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
 		Image: image,
 		Env: []string{
@@ -51,4 +56,21 @@ func (c *Client) RunAdapter(
 		return err
 	}
 	return c.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+}
+
+func (c *Client) ensureImage(ctx context.Context, img string) error {
+	_, _, err := c.cli.ImageInspectWithRaw(ctx, img)
+	if err == nil {
+		return nil
+	} // already present
+	if client.IsErrNotFound(err) {
+		rc, err := c.cli.ImagePull(ctx, img, types.ImagePullOptions{})
+		if err != nil {
+			return err
+		}
+		io.Copy(io.Discard, rc) // drain
+		rc.Close()
+		return nil
+	}
+	return err
 }

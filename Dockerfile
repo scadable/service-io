@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
         -o /out/service-io ./cmd/service-io
 
 # ───────────────────────────
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static
 
 LABEL org.opencontainers.image.title="service-io" \
       org.opencontainers.image.description="Device onboarding (NATS + Docker)" \
@@ -31,5 +31,5 @@ ENV NATS_URL=nats://nats-1:4222 \
     ADAPTER_MAP_JSON='{"random":"adapter-rand:latest"}' \
     DO_REGISTRY_TOKEN=""
 
-USER nonroot:nonroot
+#USER nonroot:nonroot
 ENTRYPOINT ["/app/service-io"]
