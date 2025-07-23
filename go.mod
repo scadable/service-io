@@ -3,8 +3,13 @@ module service-io
 go 1.24
 
 require (
-	github.com/docker/docker v27.1.1+incompatible
+
+	// Docker Engine SDK (v25 aligns with Docker 23 / 24)
+	github.com/docker/docker v25.0.1+incompatible
+	// Messaging
 	github.com/nats-io/nats.go v1.43.0
+
+	// Logging
 	github.com/rs/zerolog v1.34.0
 )
 
@@ -21,7 +26,6 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
-	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.2 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect

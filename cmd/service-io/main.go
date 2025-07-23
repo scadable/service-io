@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -9,18 +10,20 @@ import (
 	"service-io/internal/config"
 	"service-io/internal/core/devices"
 	dockercli "service-io/internal/core/docker"
-	natscli "service-io/internal/core/nats"
-	"service-io/internal/delivery/http"
+	ncore "service-io/internal/core/nats"
+	api "service-io/internal/delivery/http"
 
 	"github.com/rs/zerolog"
 )
 
 func main() {
-	log := zerolog.New(os.Stdout).With().Timestamp().Str("svc", "service-io").Logger()
-	cfg := config.MustLoad()
-	log.Info().Interface("config", cfg).Msg("loaded")
+	log := zerolog.New(os.Stdout).With().Timestamp().
+		Str("svc", "service-io").Logger()
 
-	nc, err := natscli.New(cfg.NATSURL, log)
+	cfg := config.MustLoad()
+	log.Info().Interface("cfg", cfg).Msg("boot")
+
+	nc, err := ncore.New(cfg.NATSURL, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("nats connect")
 	}
@@ -36,18 +39,16 @@ func main() {
 		log.Fatal().Err(err).Msg("manager init")
 	}
 
-	handler := http.New(mgr, log)
-	srv := &http.Server{
-		Addr:    cfg.ListenAddr,
-		Handler: handler,
-	}
+	handler := api.New(mgr, log)
+	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 
-	// graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// graceful-shutdown
+	ctx, stop := signal.NotifyContext(
+		context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	go func() {
-		log.Info().Str("listen", cfg.ListenAddr).Msg("http up")
+		log.Info().Str("listen", cfg.ListenAddr).Msg("HTTP up")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("http")
 		}

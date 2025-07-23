@@ -7,16 +7,15 @@ import (
 	"time"
 
 	"service-io/internal/core/docker"
-	"service-io/internal/core/nats"
-
+	ncore "service-io/internal/core/nats"
 	"service-io/pkg/rand"
 
 	"github.com/rs/zerolog"
 )
 
 type Manager struct {
-	kv         nats.KeyValue
-	nc         *nats.Client
+	kv         ncore.KeyValue
+	nc         *ncore.Client
 	docker     *docker.Client
 	natsURL    string
 	adapterMap map[string]string
@@ -24,19 +23,20 @@ type Manager struct {
 }
 
 func New(
-	cfgNats *nats.Client,
-	kvBucketName, natsURL string,
+	nc *ncore.Client,
+	bucketName string,
+	natsURL string,
 	adapterMap map[string]string,
 	dcli *docker.Client,
 	lg zerolog.Logger,
 ) (*Manager, error) {
-	kv, err := cfgNats.EnsureBucket(kvBucketName)
+	kv, err := nc.EnsureBucket(bucketName)
 	if err != nil {
 		return nil, err
 	}
 	return &Manager{
 		kv:         kv,
-		nc:         cfgNats,
+		nc:         nc,
 		docker:     dcli,
 		natsURL:    natsURL,
 		adapterMap: adapterMap,
@@ -44,7 +44,7 @@ func New(
 	}, nil
 }
 
-// AddDevice → generates ID, creates stream, persists registry & starts adapter
+// AddDevice -> create ID, stream, registry entry, adapter container.
 func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error) {
 	img, ok := m.adapterMap[devType]
 	if !ok {
@@ -65,29 +65,31 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		Subject:   subject,
 		CreatedAt: time.Now().UTC(),
 	}
-	b, _ := json.Marshal(dev)
-	if _, err := m.kv.Put(id, b); err != nil {
+	raw, _ := json.Marshal(dev)
+	if _, err := m.kv.Put(id, raw); err != nil {
 		return nil, err
 	}
 
 	if err := m.docker.RunAdapter(ctx, id, img, m.natsURL, subject); err != nil {
-		_, _ = m.kv.Delete(id)
-		return nil, fmt.Errorf("adapter spin-up: %w", err)
+		_ = m.kv.Delete(id)
+		return nil, fmt.Errorf("start adapter: %w", err)
 	}
-
 	return &dev, nil
 }
 
 func (m *Manager) ListDevices() ([]Device, error) {
 	keys, err := m.kv.Keys()
 	if err != nil {
+		if err == ncore.ErrNoKeysFound {
+			
+			return []Device{}, nil // just empty
+		}
 		return nil, err
 	}
-
 	out := make([]Device, 0, len(keys))
 	for _, k := range keys {
 		entry, err := m.kv.Get(k)
-		if err != nil && err != nats.ErrKeyNotFound {
+		if err != nil && err != ncore.ErrKeyNotFound {
 			return nil, err
 		}
 		var d Device
