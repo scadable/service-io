@@ -1,0 +1,27 @@
+services:
+  nats-1:
+    image: nats:2.10-alpine
+    command: |
+      -js
+      -cluster_name nats-cluster
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-2:6222,nats://nats-3:6222
+    ports:
+      - "4222:4222"
+      - "8222:8222"   # monitoring
+
+  nats-2:
+    image: nats:2.10-alpine
+    command: |
+      -js
+      -cluster_name nats-cluster
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-1:6222,nats://nats-3:6222
+
+  nats-3:
+    image: nats:2.10-alpine
+    command: |
+      -js
+      -cluster_name nats-cluster
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-1:6222,nats://nats-2:6222
