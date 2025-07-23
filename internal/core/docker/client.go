@@ -1,19 +1,36 @@
-// Thin wrapper over Docker Engine SDK.
+// internal/core/docker/client.go
+// --------------------------------
+// Docker wrapper that
+//
+//	· logs in to DO Container Registry (if DO_REGISTRY_TOKEN present)
+//	· spawns adapter containers in the same networks as service-io
 package docker
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"io"
+	"os"
 
 	types "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
 )
 
+const doRegistry = "registry.digitalocean.com"
+
+// ------------------------------
+// Client
+// ------------------------------
+
 type Client struct {
-	cli *client.Client
-	lg  zerolog.Logger
+	cli        *client.Client
+	lg         zerolog.Logger
+	authHeader string // base64-encoded JSON for ImagePull
+	networks   []string
 }
 
 func New(lg zerolog.Logger) (*Client, error) {
@@ -23,20 +40,40 @@ func New(lg zerolog.Logger) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{cli: cli, lg: lg.With().Str("adapter", "docker").Logger()}, nil
+
+	c := &Client{cli: cli, lg: lg.With().Str("adapter", "docker").Logger()}
+
+	// --- Registry login (optional) ---
+	if tok := os.Getenv("DO_REGISTRY_TOKEN"); tok != "" {
+		if hdr, err := c.loginDO(context.Background(), tok); err == nil {
+			c.authHeader = hdr
+			c.lg.Info().Msg("logged in to DigitalOcean registry")
+		} else {
+			c.lg.Warn().Err(err).Msg("registry login failed; will try anonymous pulls")
+		}
+	}
+
+	// --- Discover parent networks (if running in a container) ---
+	if nets, err := currentContainerNetworks(cli); err == nil {
+		c.networks = nets
+		c.lg.Debug().Strs("networks", nets).Msg("parent networks detected")
+	} else {
+		c.lg.Debug().Msg("running outside a container; using default bridge")
+	}
+
+	return c, nil
 }
 
-// RunAdapter launches (or replaces) a container named adapter-<deviceID>.
+// ------------------------------
+// Public API
+// ------------------------------
+
 func (c *Client) RunAdapter(
 	ctx context.Context,
-	deviceID string,
-	image string,
-	natsURL string,
-	subject string,
+	deviceID, image, natsURL, subject string,
 ) error {
 	name := "adapter-" + deviceID
 
-	// Remove any previous incarnation (idempotent).
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 
@@ -55,22 +92,70 @@ func (c *Client) RunAdapter(
 	if err != nil {
 		return err
 	}
+
+	// Join the same Docker networks as service-io.
+	for _, n := range c.networks {
+		if err := c.cli.NetworkConnect(ctx, n, resp.ID, nil); err != nil {
+			c.lg.Warn().Err(err).Str("network", n).Msg("connect adapter to network")
+		}
+	}
+
 	return c.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
 }
+
+// ------------------------------
+// internals
+// ------------------------------
 
 func (c *Client) ensureImage(ctx context.Context, img string) error {
 	_, _, err := c.cli.ImageInspectWithRaw(ctx, img)
 	if err == nil {
 		return nil
-	} // already present
+	}
 	if client.IsErrNotFound(err) {
-		rc, err := c.cli.ImagePull(ctx, img, types.ImagePullOptions{})
+		opts := types.ImagePullOptions{}
+		if c.authHeader != "" {
+			opts.RegistryAuth = c.authHeader
+		}
+		rc, err := c.cli.ImagePull(ctx, img, opts)
 		if err != nil {
 			return err
 		}
-		io.Copy(io.Discard, rc) // drain
+		io.Copy(io.Discard, rc)
 		rc.Close()
 		return nil
 	}
 	return err
+}
+
+func (c *Client) loginDO(ctx context.Context, token string) (string, error) {
+	cfg := registrytypes.AuthConfig{
+		ServerAddress: doRegistry,
+		Username:      "doctl",
+		Password:      token,
+	}
+	if _, err := c.cli.RegistryLogin(ctx, cfg); err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(cfg)
+	return base64.StdEncoding.EncodeToString(raw), nil
+}
+
+// currentContainerNetworks returns the names of every Docker network
+// the *service-io* container itself is attached to.
+// Returns nil slice when running outside a container.
+func currentContainerNetworks(cli *client.Client) ([]string, error) {
+	contID, err := os.Hostname() // inside Docker -> container ID
+	if err != nil || len(contID) < 12 {
+		return nil, err
+	}
+	ins, err := cli.ContainerInspect(context.Background(), contID)
+	if err != nil {
+		return nil, err
+	}
+	nets := make([]string, 0, len(ins.NetworkSettings.Networks))
+	for n := range ins.NetworkSettings.Networks {
+		nets = append(nets, n)
+	}
+	return nets, nil
 }

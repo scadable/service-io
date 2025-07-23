@@ -49,7 +49,7 @@ services:
       NATS_URL: nats://nats-1:4222            # reachable inside compose network
       LISTEN_ADDR: ":9090"
       ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest"}'
-      DO_REGISTRY_TOKEN: "dop_v1_…7387"
+      DO_REGISTRY_TOKEN: "dop_v1_0c287cb3b1706411b5026b7eb1c82e64ae02449f32243ad19971283f17407387"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
