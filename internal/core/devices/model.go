@@ -2,9 +2,14 @@ package devices
 
 import "time"
 
+// Device represents a single device adapter instance.
+// It includes GORM tags for database mapping and JSON tags for API responses.
 type Device struct {
-	ID        string    `json:"id"`
-	Type      string    `json:"type"`
-	Subject   string    `json:"subject"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            string    `gorm:"primaryKey" json:"id"`
+	DeviceType    string    `json:"type"`
+	Image         string    `json:"image"`
+	NatsSubject   string    `json:"nats_subject"`
+	ContainerID   string    `json:"container_id"`
+	ContainerName string    `json:"container_name"`
+	CreatedAt     time.Time `json:"created_at"`
 }

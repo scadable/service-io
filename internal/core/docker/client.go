@@ -10,11 +10,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/docker/docker/api/types/container"
 	"io"
 	"os"
 
 	types "github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
@@ -68,17 +68,18 @@ func New(lg zerolog.Logger) (*Client, error) {
 // Public API
 // ------------------------------
 
+// RunAdapter starts a new container for a device and returns the container ID.
 func (c *Client) RunAdapter(
 	ctx context.Context,
 	deviceID, image, natsURL, subject string,
-) error {
+) (containerID string, err error) {
 	name := "adapter-" + deviceID
 
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 
 	if err := c.ensureImage(ctx, image); err != nil {
-		return err
+		return "", err
 	}
 
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
@@ -90,7 +91,7 @@ func (c *Client) RunAdapter(
 		},
 	}, nil, nil, nil, name)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Join the same Docker networks as service-io.
@@ -100,7 +101,11 @@ func (c *Client) RunAdapter(
 		}
 	}
 
-	return c.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	if err := c.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		return "", err
+	}
+
+	return resp.ID, nil
 }
 
 // ------------------------------

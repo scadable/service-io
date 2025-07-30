@@ -2,7 +2,6 @@ package devices
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	ncore "service-io/internal/adapters/nats"
 	"time"
@@ -11,10 +10,11 @@ import (
 	"service-io/pkg/rand"
 
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 )
 
 type Manager struct {
-	kv         ncore.KeyValue
+	db         *gorm.DB
 	nc         *ncore.Client
 	docker     *docker.Client
 	natsURL    string
@@ -23,19 +23,15 @@ type Manager struct {
 }
 
 func New(
+	db *gorm.DB,
 	nc *ncore.Client,
-	bucketName string,
 	natsURL string,
 	adapterMap map[string]string,
 	dcli *docker.Client,
 	lg zerolog.Logger,
 ) (*Manager, error) {
-	kv, err := nc.EnsureBucket(bucketName)
-	if err != nil {
-		return nil, err
-	}
 	return &Manager{
-		kv:         kv,
+		db:         db,
 		nc:         nc,
 		docker:     dcli,
 		natsURL:    natsURL,
@@ -44,57 +40,57 @@ func New(
 	}, nil
 }
 
-// AddDevice -> create ID, stream, registry entry, adapter container.
+// AddDevice -> create DB record, NATS stream, and then the adapter container.
 func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error) {
 	img, ok := m.adapterMap[devType]
 	if !ok {
 		return nil, fmt.Errorf("unsupported device type %q", devType)
 	}
 
-	id := rand.ID16()
-	subject := fmt.Sprintf("devices.%s.telemetry", id)
-	stream := "DEV_" + id
-
-	if err := m.nc.EnsureStream(subject, stream); err != nil {
-		return nil, err
+	// 1. Prepare device details
+	dev := &Device{
+		ID:            rand.ID16(),
+		DeviceType:    devType,
+		Image:         img,
+		NatsSubject:   fmt.Sprintf("devices.%s.telemetry", rand.ID16()),
+		ContainerName: "adapter-" + rand.ID16(),
+		CreatedAt:     time.Now().UTC(),
 	}
 
-	dev := Device{
-		ID:        id,
-		Type:      devType,
-		Subject:   subject,
-		CreatedAt: time.Now().UTC(),
-	}
-	raw, _ := json.Marshal(dev)
-	if _, err := m.kv.Put(id, raw); err != nil {
-		return nil, err
+	// 2. Create the NATS stream for telemetry
+	streamName := "DEV_" + dev.ID
+	if err := m.nc.EnsureStream(dev.NatsSubject, streamName); err != nil {
+		return nil, fmt.Errorf("ensure nats stream: %w", err)
 	}
 
-	if err := m.docker.RunAdapter(ctx, id, img, m.natsURL, subject); err != nil {
-		_ = m.kv.Delete(id)
-		return nil, fmt.Errorf("start adapter: %w", err)
+	// 3. Create the record in the database
+	if err := m.db.Create(dev).Error; err != nil {
+		return nil, fmt.Errorf("create device record in db: %w", err)
 	}
-	return &dev, nil
+
+	// 4. Run the adapter container
+	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, dev.NatsSubject)
+	if err != nil {
+		// If container fails to start, delete the DB record to keep state consistent.
+		m.db.Delete(dev)
+		return nil, fmt.Errorf("start adapter container: %w", err)
+	}
+
+	// 5. Update the record with the final ContainerID
+	dev.ContainerID = containerID
+	if err := m.db.Save(dev).Error; err != nil {
+		// This is less critical, but we should log it.
+		m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to save container id to db")
+	}
+
+	return dev, nil
 }
 
 func (m *Manager) ListDevices() ([]Device, error) {
-	keys, err := m.kv.Keys()
-	if err != nil {
-		if err == ncore.ErrNoKeysFound {
-			
-			return []Device{}, nil // just empty
-		}
+	var devices []Device
+	if err := m.db.Find(&devices).Error; err != nil {
 		return nil, err
 	}
-	out := make([]Device, 0, len(keys))
-	for _, k := range keys {
-		entry, err := m.kv.Get(k)
-		if err != nil && err != ncore.ErrKeyNotFound {
-			return nil, err
-		}
-		var d Device
-		_ = json.Unmarshal(entry.Value(), &d)
-		out = append(out, d)
-	}
-	return out, nil
+	// If no devices are found, GORM returns an empty slice and no error.
+	return devices, nil
 }

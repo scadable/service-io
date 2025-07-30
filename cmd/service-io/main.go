@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	gormadapter "service-io/internal/adapters/gorm"
 	ncore "service-io/internal/adapters/nats"
 	"syscall"
 
@@ -23,6 +24,12 @@ func main() {
 	cfg := config.MustLoad()
 	log.Info().Interface("cfg", cfg).Msg("boot")
 
+	// --- Initialize Database ---
+	db, err := gormadapter.New(cfg.DatabaseDSN, log)
+	if err != nil {
+		log.Fatal().Err(err).Msg("gorm connect")
+	}
+
 	nc, err := ncore.New(cfg.NATSURL, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("nats connect")
@@ -34,11 +41,13 @@ func main() {
 		log.Fatal().Err(err).Msg("docker connect")
 	}
 
-	mgr, err := devices.New(nc, cfg.DevBucket, cfg.NATSURL, cfg.Adapters, dcli, log)
+	// Pass the *gorm.DB instance to the manager
+	mgr, err := devices.New(db, nc, cfg.NATSURL, cfg.Adapters, dcli, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("manager init")
 	}
 
+	// We are now using the chi router from the previous step
 	handler := api.New(mgr, log)
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 
