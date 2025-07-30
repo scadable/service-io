@@ -7,6 +7,8 @@ import (
 
 	"service-io/internal/core/devices"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog"
 )
 
@@ -15,8 +17,25 @@ type Handler struct {
 	lg  zerolog.Logger
 }
 
-func New(m *devices.Manager, lg zerolog.Logger) *Handler {
-	return &Handler{mgr: m, lg: lg}
+func New(m *devices.Manager, lg zerolog.Logger) http.Handler {
+	r := chi.NewRouter()
+
+	// Add middleware
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger) // Chi's logger, or you can write your own with Zerolog
+	r.Use(middleware.Recoverer)
+
+	h := &Handler{mgr: m, lg: lg}
+
+	// Define routes
+	r.Route("/devices", func(r chi.Router) {
+		r.Post("/", h.handleAdd)
+		r.Get("/", h.handleList)
+		// r.Get("/{deviceID}", h.handleGetOne) // Now easy to add!
+	})
+
+	return r
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

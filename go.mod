@@ -3,7 +3,6 @@ module service-io
 go 1.24
 
 require (
-
 	// Docker Engine SDK (v25 aligns with Docker 23 / 24)
 	github.com/docker/docker v25.0.1+incompatible
 	// Messaging
@@ -12,6 +11,8 @@ require (
 	// Logging
 	github.com/rs/zerolog v1.34.0
 )
+
+require github.com/go-chi/chi/v5 v5.2.2
 
 require (
 	github.com/Microsoft/go-winio v0.4.14 // indirect
