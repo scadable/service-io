@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	ncore "service-io/internal/adapters/nats"
 	"time"
 
 	"service-io/internal/core/docker"
-	ncore "service-io/internal/core/nats"
 	"service-io/pkg/rand"
 
 	"github.com/rs/zerolog"

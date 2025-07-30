@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	ncore "service-io/internal/adapters/nats"
 	"syscall"
 
 	"service-io/internal/config"
 	"service-io/internal/core/devices"
 	dockercli "service-io/internal/core/docker"
-	ncore "service-io/internal/core/nats"
 	api "service-io/internal/delivery/http"
 
 	"github.com/rs/zerolog"
