@@ -14,9 +14,16 @@ import (
 	dockercli "service-io/internal/core/docker"
 	api "service-io/internal/delivery/http"
 
+	_ "service-io/docs" // Import the generated docs
+
 	"github.com/rs/zerolog"
 )
 
+// @title           service-io API
+// @version         1.0
+// @description     This is the API for the service-io device onboarding microservice.
+// @host            localhost:9090
+// @BasePath        /
 func main() {
 	log := zerolog.New(os.Stdout).With().Timestamp().
 		Str("svc", "service-io").Logger()
@@ -41,13 +48,11 @@ func main() {
 		log.Fatal().Err(err).Msg("docker connect")
 	}
 
-	// Pass the *gorm.DB instance to the manager
 	mgr, err := devices.New(db, nc, cfg.NATSURL, cfg.Adapters, dcli, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("manager init")
 	}
 
-	// We are now using the chi router from the previous step
 	handler := api.New(mgr, log)
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 
