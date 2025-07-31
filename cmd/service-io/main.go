@@ -52,6 +52,13 @@ func main() {
 		log.Fatal().Err(err).Msg("manager init")
 	}
 
+	// --- ADD THIS BLOCK ---
+	// Restart any devices that were running before shutdown.
+	if err := mgr.RestartRunningDevices(context.Background()); err != nil {
+		log.Error().Err(err).Msg("error during device restart")
+	}
+	// ----------------------
+
 	handler := api.New(mgr, log)
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: handler}
 

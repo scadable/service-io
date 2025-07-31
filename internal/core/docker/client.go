@@ -90,27 +90,28 @@ func (c *Client) RunAdapter(
 	return resp.ID, nil
 }
 
-// StopAndRemoveContainer stops and removes a container.
-func (c *Client) StopAndRemoveContainer(ctx context.Context, containerName string) error {
-	c.lg.Info().Str("container_name", containerName).Msg("stopping and removing container")
+// StopAndRemoveContainer stops and removes a container. It's idempotent.
+func (c *Client) StopAndRemoveContainer(ctx context.Context, containerIdentifier string) error {
+	c.lg.Info().Str("container", containerIdentifier).Msg("stopping and removing container")
 
-	// Set a timeout for the stop operation in seconds.
-	timeoutSec := 10                                                                                             // <-- FIX: Changed from time.Duration to int
-	if err := c.cli.ContainerStop(ctx, containerName, container.StopOptions{Timeout: &timeoutSec}); err != nil { // <-- FIX: Pass the int pointer
-		c.lg.Warn().Err(err).Str("container_name", containerName).Msg("failed to stop container, will attempt force remove")
-	}
-
-	// Remove the container
-	err := c.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{
-		Force:         true,
-		RemoveVolumes: true,
+	// The `Force: true` option in ContainerRemove will stop the container first.
+	// So we can simplify this to a single call.
+	err := c.cli.ContainerRemove(ctx, containerIdentifier, types.ContainerRemoveOptions{
+		Force:         true, // Stop the container if it's running.
+		RemoveVolumes: true, // Remove anonymous volumes.
 	})
-	if err != nil {
-		return err
+
+	// If the container is already gone, that's okay.
+	if err != nil && client.IsErrNotFound(err) {
+		c.lg.Warn().Str("container", containerIdentifier).Msg("container not found, assuming it's already removed")
+		return nil
 	}
 
-	c.lg.Info().Str("container_name", containerName).Msg("container removed successfully")
-	return nil
+	if err == nil {
+		c.lg.Info().Str("container", containerIdentifier).Msg("container removed successfully")
+	}
+
+	return err
 }
 
 func (c *Client) ensureImage(ctx context.Context, img string) error {

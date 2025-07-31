@@ -46,6 +46,18 @@ func (c *Client) EnsureStream(subject, name string) error {
 	return nil
 }
 
+// DeleteStream removes a stream by name and ignores "not found" errors.
+func (c *Client) DeleteStream(name string) error {
+	err := c.js.DeleteStream(name)
+	// If the stream doesn't exist, we consider it a success.
+	if err != nil && err != natsgo.ErrStreamNotFound {
+		c.lg.Error().Err(err).Str("stream_name", name).Msg("failed to delete stream")
+		return err
+	}
+	c.lg.Info().Str("stream_name", name).Msg("stream deleted or did not exist")
+	return nil
+}
+
 // -------- Key-value bucket (device registry) --------
 
 func (c *Client) EnsureBucket(name string) (KeyValue, error) {

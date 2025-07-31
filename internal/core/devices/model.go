@@ -11,5 +11,6 @@ type Device struct {
 	NatsSubject   string    `json:"nats_subject"`
 	ContainerID   string    `json:"container_id"`
 	ContainerName string    `json:"container_name"`
+	Status        string    `json:"status"` // e.g., "running", "stopped"
 	CreatedAt     time.Time `json:"created_at"`
 }

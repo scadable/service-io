@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"service-io/internal/core/devices"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -36,6 +37,7 @@ func New(m *devices.Manager, lg zerolog.Logger) http.Handler {
 	r.Route("/devices", func(r chi.Router) {
 		r.Post("/", h.handleAdd)
 		r.Get("/", h.handleList)
+		r.Delete("/{deviceID}", h.handleDelete)
 	})
 
 	// --- Swagger Docs Route ---
@@ -62,13 +64,13 @@ func New(m *devices.Manager, lg zerolog.Logger) http.Handler {
 func (h *Handler) handleAdd(w http.ResponseWriter, r *http.Request) {
 	var req addDeviceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Type == "" {
-		http.Error(w, "body must be {\"type\":\"<deviceType>\"}", http.StatusBadRequest)
+		http.Error(w, `{"error": "body must be {\"type\":\"<deviceType>\"}"}`, http.StatusBadRequest)
 		return
 	}
 	dev, err := h.mgr.AddDevice(r.Context(), req.Type)
 	if err != nil {
 		h.lg.Error().Err(err).Msg("add device")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, dev)
@@ -86,7 +88,7 @@ func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
 	list, err := h.mgr.ListDevices()
 	if err != nil {
 		h.lg.Error().Err(err).Msg("list devices")
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, list)
@@ -104,12 +106,13 @@ func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
 // @Router       /devices/{deviceID} [delete]
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	deviceID := chi.URLParam(r, "deviceID")
+	// 🎯 FIX: Use RemoveDevice which now returns a standard "not found" error.
 	if err := h.mgr.RemoveDevice(r.Context(), deviceID); err != nil {
-		// A bit of logic to return a 404 for "not found" errors
-		if err.Error() == "device with ID '"+deviceID+"' not found" {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		// A more robust way to check for "not found" errors
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusNotFound)
 		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusInternalServerError)
 		}
 		return
 	}
