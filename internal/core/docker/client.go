@@ -1,35 +1,25 @@
 // internal/core/docker/client.go
-// --------------------------------
-// Docker wrapper that
-//
-//	· logs in to DO Container Registry (if DO_REGISTRY_TOKEN present)
-//	· spawns adapter containers in the same networks as service-io
 package docker
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"io"
-	"os"
-
 	types "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
+	"io"
+	"os"
 )
 
 const doRegistry = "registry.digitalocean.com"
 
-// ------------------------------
-// Client
-// ------------------------------
-
 type Client struct {
 	cli        *client.Client
 	lg         zerolog.Logger
-	authHeader string // base64-encoded JSON for ImagePull
+	authHeader string
 	networks   []string
 }
 
@@ -43,7 +33,6 @@ func New(lg zerolog.Logger) (*Client, error) {
 
 	c := &Client{cli: cli, lg: lg.With().Str("adapter", "docker").Logger()}
 
-	// --- Registry login (optional) ---
 	if tok := os.Getenv("DO_REGISTRY_TOKEN"); tok != "" {
 		if hdr, err := c.loginDO(context.Background(), tok); err == nil {
 			c.authHeader = hdr
@@ -53,7 +42,6 @@ func New(lg zerolog.Logger) (*Client, error) {
 		}
 	}
 
-	// --- Discover parent networks (if running in a container) ---
 	if nets, err := currentContainerNetworks(cli); err == nil {
 		c.networks = nets
 		c.lg.Debug().Strs("networks", nets).Msg("parent networks detected")
@@ -64,21 +52,17 @@ func New(lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
-// ------------------------------
-// Public API
-// ------------------------------
-
 func (c *Client) RunAdapter(
 	ctx context.Context,
 	deviceID, image, natsURL, subject string,
-) error {
+) (containerID string, err error) {
 	name := "adapter-" + deviceID
 
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 
 	if err := c.ensureImage(ctx, image); err != nil {
-		return err
+		return "", err
 	}
 
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
@@ -90,22 +74,45 @@ func (c *Client) RunAdapter(
 		},
 	}, nil, nil, nil, name)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Join the same Docker networks as service-io.
 	for _, n := range c.networks {
 		if err := c.cli.NetworkConnect(ctx, n, resp.ID, nil); err != nil {
 			c.lg.Warn().Err(err).Str("network", n).Msg("connect adapter to network")
 		}
 	}
 
-	return c.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	if err := c.cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		return "", err
+	}
+
+	return resp.ID, nil
 }
 
-// ------------------------------
-// internals
-// ------------------------------
+// StopAndRemoveContainer stops and removes a container. It's idempotent.
+func (c *Client) StopAndRemoveContainer(ctx context.Context, containerIdentifier string) error {
+	c.lg.Info().Str("container", containerIdentifier).Msg("stopping and removing container")
+
+	// The `Force: true` option in ContainerRemove will stop the container first.
+	// So we can simplify this to a single call.
+	err := c.cli.ContainerRemove(ctx, containerIdentifier, types.ContainerRemoveOptions{
+		Force:         true, // Stop the container if it's running.
+		RemoveVolumes: true, // Remove anonymous volumes.
+	})
+
+	// If the container is already gone, that's okay.
+	if err != nil && client.IsErrNotFound(err) {
+		c.lg.Warn().Str("container", containerIdentifier).Msg("container not found, assuming it's already removed")
+		return nil
+	}
+
+	if err == nil {
+		c.lg.Info().Str("container", containerIdentifier).Msg("container removed successfully")
+	}
+
+	return err
+}
 
 func (c *Client) ensureImage(ctx context.Context, img string) error {
 	_, _, err := c.cli.ImageInspectWithRaw(ctx, img)
@@ -141,11 +148,8 @@ func (c *Client) loginDO(ctx context.Context, token string) (string, error) {
 	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
-// currentContainerNetworks returns the names of every Docker network
-// the *service-io* container itself is attached to.
-// Returns nil slice when running outside a container.
 func currentContainerNetworks(cli *client.Client) ([]string, error) {
-	contID, err := os.Hostname() // inside Docker -> container ID
+	contID, err := os.Hostname()
 	if err != nil || len(contID) < 12 {
 		return nil, err
 	}

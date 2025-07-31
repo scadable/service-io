@@ -11,6 +11,7 @@ type AdapterMap map[string]string
 
 type Config struct {
 	NATSURL        string
+	DatabaseDSN    string
 	ListenAddr     string
 	DevBucket      string
 	PublishTimeout time.Duration
@@ -21,6 +22,7 @@ type Config struct {
 // MustLoad loads the required settings for the system to operate
 func MustLoad() Config {
 	url := getenv("NATS_URL", "nats://localhost:4222")
+	dsn := getenv("DATABASE_DSN", "postgres://user:password@localhost:5432/servicedb?sslmode=disable")
 	addr := getenv("LISTEN_ADDR", ":9090")
 	bucket := getenv("DEV_BUCKET", "devices")
 
@@ -30,11 +32,12 @@ func MustLoad() Config {
 
 	return Config{
 		NATSURL:        url,
+		DatabaseDSN:    dsn,
 		ListenAddr:     addr,
 		DevBucket:      bucket,
 		PublishTimeout: time.Duration(sec) * time.Second,
 		Adapters:       adapters,
-		DORegistryTok:  getenv("DO_REGISTRY_TOKEN", ""),
+		DORegistryTok:  getenv("DO_REGISTRY_TOKEN", "dop_v1_9669d538d70b521478b20088690d812ce75270151646a6add8bb4b4a22c6db8f"),
 	}
 }
 

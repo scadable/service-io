@@ -1,0 +1,109 @@
+basePath: /
+definitions:
+  api.addDeviceRequest:
+    properties:
+      type:
+        example: random
+        type: string
+    type: object
+  devices.Device:
+    properties:
+      container_id:
+        type: string
+      container_name:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      image:
+        type: string
+      nats_subject:
+        type: string
+      type:
+        type: string
+    type: object
+host: localhost:9090
+info:
+  contact: {}
+  description: This is the API for the service-io device onboarding microservice.
+  title: service-io API
+  version: "1.0"
+paths:
+  /devices:
+    get:
+      description: Retrieves a list of all device adapters from the database.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/devices.Device'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: List all devices
+      tags:
+      - devices
+    post:
+      consumes:
+      - application/json
+      description: Creates a new device adapter instance, runs its container, and
+        returns the device details.
+      parameters:
+      - description: Device Type
+        in: body
+        name: device
+        required: true
+        schema:
+          $ref: '#/definitions/api.addDeviceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/devices.Device'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Add a new device
+      tags:
+      - devices
+  /devices/{deviceID}:
+    delete:
+      description: Stops the device's container and removes its record from the database.
+      parameters:
+      - description: Device ID
+        in: path
+        name: deviceID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Remove a device
+      tags:
+      - devices
+swagger: "2.0"

@@ -1,5 +1,17 @@
-
 services:
+  # ──────────── PostgreSQL Database ────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: servicedb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   # ──────────── NATS JetStream 3-node cluster ────────────
   nats-1:
     image: nats:2.10-alpine
@@ -8,13 +20,13 @@ services:
       -server_name nats-1
       -store_dir /data/jetstream
       -cluster_name nats-cluster
-      -cluster  nats://0.0.0.0:6222
-      -routes   nats://nats-2:6222,nats://nats-3:6222
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-2:6222,nats://nats-3:6222
     volumes:
       - n1-data:/data/jetstream
     ports:
-      - "4222:4222"   # client
-      - "8222:8222"   # monitoring
+      - "4222:4222" # client
+      - "8222:8222" # monitoring
 
   nats-2:
     image: nats:2.10-alpine
@@ -23,8 +35,8 @@ services:
       -server_name nats-2
       -store_dir /data/jetstream
       -cluster_name nats-cluster
-      -cluster  nats://0.0.0.0:6222
-      -routes   nats://nats-1:6222,nats://nats-3:6222
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-1:6222,nats://nats-3:6222
     volumes:
       - n2-data:/data/jetstream
 
@@ -35,18 +47,19 @@ services:
       -server_name nats-3
       -store_dir /data/jetstream
       -cluster_name nats-cluster
-      -cluster  nats://0.0.0.0:6222
-      -routes   nats://nats-1:6222,nats://nats-2:6222
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-1:6222,nats://nats-2:6222
     volumes:
       - n3-data:/data/jetstream
 
   # ──────────── Device-onboarding API ────────────
   service-io:
     build: .
-    depends_on: [ nats-1, nats-2, nats-3 ]
+    depends_on: [nats-1, nats-2, nats-3, postgres]
     restart: on-failure
     environment:
-      NATS_URL: nats://nats-1:4222            # reachable inside compose network
+      NATS_URL: nats://nats-1:4222 # reachable inside compose network
+      DATABASE_DSN: "postgres://user:password@postgres:5432/servicedb?sslmode=disable"
       LISTEN_ADDR: ":9090"
       ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest"}'
       DO_REGISTRY_TOKEN: "dop_v1_0c287cb3b1706411b5026b7eb1c82e64ae02449f32243ad19971283f17407387"
@@ -56,6 +69,7 @@ services:
       - "9090:9090"
 
 volumes:
+  postgres-data:
   n1-data:
   n2-data:
   n3-data:
