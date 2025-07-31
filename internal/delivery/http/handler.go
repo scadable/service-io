@@ -92,6 +92,30 @@ func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, list)
 }
 
+// handleDelete removes a device adapter.
+// @Summary      Remove a device
+// @Description  Stops the device's container and removes its record from the database.
+// @Tags         devices
+// @Produce      json
+// @Param        deviceID   path      string  true  "Device ID"
+// @Success      204  {string}  string "No Content"
+// @Failure      404  {string}  string "Not Found"
+// @Failure      500  {string}  string "Internal Server Error"
+// @Router       /devices/{deviceID} [delete]
+func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
+	deviceID := chi.URLParam(r, "deviceID")
+	if err := h.mgr.RemoveDevice(r.Context(), deviceID); err != nil {
+		// A bit of logic to return a 404 for "not found" errors
+		if err.Error() == "device with ID '"+deviceID+"' not found" {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)

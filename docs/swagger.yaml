@@ -79,4 +79,31 @@ paths:
       summary: Add a new device
       tags:
       - devices
+  /devices/{deviceID}:
+    delete:
+      description: Stops the device's container and removes its record from the database.
+      parameters:
+      - description: Device ID
+        in: path
+        name: deviceID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Remove a device
+      tags:
+      - devices
 swagger: "2.0"

@@ -31,7 +31,6 @@ func main() {
 	cfg := config.MustLoad()
 	log.Info().Interface("cfg", cfg).Msg("boot")
 
-	// --- Initialize Database ---
 	db, err := gormadapter.New(cfg.DatabaseDSN, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("gorm connect")
@@ -69,6 +68,15 @@ func main() {
 	}()
 
 	<-ctx.Done()
+
+	// --- Shutdown Logic ---
+	log.Info().Msg("shutting down server...")
 	_ = srv.Shutdown(context.Background())
+
+	// --- Cleanup Logic ---
+	if err := mgr.CleanupAdapters(context.Background()); err != nil {
+		log.Error().Err(err).Msg("error during adapter cleanup")
+	}
+
 	log.Info().Msg("bye")
 }

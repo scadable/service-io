@@ -37,7 +37,7 @@ func MustLoad() Config {
 		DevBucket:      bucket,
 		PublishTimeout: time.Duration(sec) * time.Second,
 		Adapters:       adapters,
-		DORegistryTok:  getenv("DO_REGISTRY_TOKEN", ""),
+		DORegistryTok:  getenv("DO_REGISTRY_TOKEN", "dop_v1_9669d538d70b521478b20088690d812ce75270151646a6add8bb4b4a22c6db8f"),
 	}
 }
 

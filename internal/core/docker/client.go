@@ -1,35 +1,25 @@
 // internal/core/docker/client.go
-// --------------------------------
-// Docker wrapper that
-//
-//	· logs in to DO Container Registry (if DO_REGISTRY_TOKEN present)
-//	· spawns adapter containers in the same networks as service-io
 package docker
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/docker/docker/api/types/container"
-	"io"
-	"os"
-
 	types "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
+	"io"
+	"os"
 )
 
 const doRegistry = "registry.digitalocean.com"
 
-// ------------------------------
-// Client
-// ------------------------------
-
 type Client struct {
 	cli        *client.Client
 	lg         zerolog.Logger
-	authHeader string // base64-encoded JSON for ImagePull
+	authHeader string
 	networks   []string
 }
 
@@ -43,7 +33,6 @@ func New(lg zerolog.Logger) (*Client, error) {
 
 	c := &Client{cli: cli, lg: lg.With().Str("adapter", "docker").Logger()}
 
-	// --- Registry login (optional) ---
 	if tok := os.Getenv("DO_REGISTRY_TOKEN"); tok != "" {
 		if hdr, err := c.loginDO(context.Background(), tok); err == nil {
 			c.authHeader = hdr
@@ -53,7 +42,6 @@ func New(lg zerolog.Logger) (*Client, error) {
 		}
 	}
 
-	// --- Discover parent networks (if running in a container) ---
 	if nets, err := currentContainerNetworks(cli); err == nil {
 		c.networks = nets
 		c.lg.Debug().Strs("networks", nets).Msg("parent networks detected")
@@ -64,11 +52,6 @@ func New(lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
-// ------------------------------
-// Public API
-// ------------------------------
-
-// RunAdapter starts a new container for a device and returns the container ID.
 func (c *Client) RunAdapter(
 	ctx context.Context,
 	deviceID, image, natsURL, subject string,
@@ -94,7 +77,6 @@ func (c *Client) RunAdapter(
 		return "", err
 	}
 
-	// Join the same Docker networks as service-io.
 	for _, n := range c.networks {
 		if err := c.cli.NetworkConnect(ctx, n, resp.ID, nil); err != nil {
 			c.lg.Warn().Err(err).Str("network", n).Msg("connect adapter to network")
@@ -108,9 +90,28 @@ func (c *Client) RunAdapter(
 	return resp.ID, nil
 }
 
-// ------------------------------
-// internals
-// ------------------------------
+// StopAndRemoveContainer stops and removes a container.
+func (c *Client) StopAndRemoveContainer(ctx context.Context, containerName string) error {
+	c.lg.Info().Str("container_name", containerName).Msg("stopping and removing container")
+
+	// Set a timeout for the stop operation in seconds.
+	timeoutSec := 10                                                                                             // <-- FIX: Changed from time.Duration to int
+	if err := c.cli.ContainerStop(ctx, containerName, container.StopOptions{Timeout: &timeoutSec}); err != nil { // <-- FIX: Pass the int pointer
+		c.lg.Warn().Err(err).Str("container_name", containerName).Msg("failed to stop container, will attempt force remove")
+	}
+
+	// Remove the container
+	err := c.cli.ContainerRemove(ctx, containerName, types.ContainerRemoveOptions{
+		Force:         true,
+		RemoveVolumes: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	c.lg.Info().Str("container_name", containerName).Msg("container removed successfully")
+	return nil
+}
 
 func (c *Client) ensureImage(ctx context.Context, img string) error {
 	_, _, err := c.cli.ImageInspectWithRaw(ctx, img)
@@ -146,11 +147,8 @@ func (c *Client) loginDO(ctx context.Context, token string) (string, error) {
 	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
-// currentContainerNetworks returns the names of every Docker network
-// the *service-io* container itself is attached to.
-// Returns nil slice when running outside a container.
 func currentContainerNetworks(cli *client.Client) ([]string, error) {
-	contID, err := os.Hostname() // inside Docker -> container ID
+	contID, err := os.Hostname()
 	if err != nil || len(contID) < 12 {
 		return nil, err
 	}
