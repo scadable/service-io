@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	types "github.com/docker/docker/api/types"
+	"io"
+	"os"
+
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
-	"io"
-	"os"
 )
 
 const doRegistry = "registry.digitalocean.com"
@@ -54,9 +55,10 @@ func New(lg zerolog.Logger) (*Client, error) {
 
 func (c *Client) RunAdapter(
 	ctx context.Context,
-	deviceID, image, natsURL, subject string,
+	deviceID, image, natsURL string,
 ) (containerID string, err error) {
 	name := "adapter-" + deviceID
+	subject := "devices." + deviceID + ".telemetry"
 
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
