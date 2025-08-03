@@ -41,7 +41,6 @@ func New(
 	}, nil
 }
 
-// 🎯 FIX: Add a loop to ensure the generated device ID is unique.
 // AddDevice -> create DB record, NATS stream, and then the adapter container.
 func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error) {
 	img, ok := m.adapterMap[devType]
@@ -67,7 +66,7 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		ID:            devID,
 		DeviceType:    devType,
 		Image:         img,
-		NatsSubject:   fmt.Sprintf("devices.%s.telemetry", rand.ID16()), // Subject can remain random
+		NatsSubject:   fmt.Sprintf("devices.%s.telemetry", devID),
 		ContainerName: "adapter-" + devID,
 		Status:        "running",
 		CreatedAt:     time.Now().UTC(),
@@ -82,7 +81,7 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		return nil, fmt.Errorf("create device record in db: %w", err)
 	}
 
-	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, dev.NatsSubject)
+	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL)
 	if err != nil {
 		m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to start container, rolling back")
 		if delErr := m.nc.DeleteStream(streamName); delErr != nil {
@@ -140,7 +139,7 @@ func (m *Manager) RestartRunningDevices(ctx context.Context) error {
 
 	for _, dev := range runningDevices {
 		m.lg.Info().Str("device_id", dev.ID).Msg("restarting device")
-		containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, dev.NatsSubject)
+		containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL)
 		if err != nil {
 			m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to restart device container")
 			dev.Status = "stopped"
