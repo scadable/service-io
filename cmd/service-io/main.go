@@ -38,6 +38,7 @@ func main() {
 		EntryPoint:   cfg.TraefikEntryPoint,
 		CertResolver: cfg.TraefikCertResolver,
 		Network:      cfg.TraefikNetwork,
+		Logger:       log, // Pass the logger here
 	})
 
 	db, err := gormadapter.New(cfg.DatabaseDSN, log)

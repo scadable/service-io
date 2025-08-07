@@ -54,10 +54,10 @@ func New(lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
-// RunAdapter now accepts labels to attach to the container.
+// RunAdapter now accepts MQTT credentials.
 func (c *Client) RunAdapter(
 	ctx context.Context,
-	deviceID, image, natsURL string,
+	deviceID, image, natsURL, mqttUser, mqttPassword string,
 	labels map[string]string,
 ) (containerID string, err error) {
 	name := "adapter-" + deviceID
@@ -71,14 +71,23 @@ func (c *Client) RunAdapter(
 		return "", err
 	}
 
+	// Prepare environment variables.
+	env := []string{
+		"NATS_URL=" + natsURL,
+		"DEVICE_ID=" + deviceID,
+		"NATS_SUBJECT=" + subject,
+		"ENABLE_JETSTREAM=true",
+	}
+
+	// Add MQTT credentials if provided.
+	if mqttUser != "" && mqttPassword != "" {
+		env = append(env, "MQTT_USER="+mqttUser, "MQTT_PASSWORD="+mqttPassword)
+	}
+
 	// Apply the labels in the container config.
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
-		Image: image,
-		Env: []string{
-			"NATS_URL=" + natsURL,
-			"SUBJECT=" + subject,
-			"ENABLE_JETSTREAM=true",
-		},
+		Image:  image,
+		Env:    env,    // Pass the combined environment variables.
 		Labels: labels, // Apply the Traefik labels here.
 	}, nil, nil, nil, name)
 	if err != nil {
@@ -86,7 +95,6 @@ func (c *Client) RunAdapter(
 	}
 
 	// Connect the container to the appropriate network.
-	// This assumes the network is correctly specified in the Traefik labels.
 	netName := labels["traefik.docker.network"]
 	if netName != "" {
 		err = c.cli.NetworkConnect(ctx, netName, resp.ID, &network.EndpointSettings{})
@@ -102,7 +110,7 @@ func (c *Client) RunAdapter(
 	return resp.ID, nil
 }
 
-// StopAndRemoveContainer stops and removes a container. It's idempotent.
+// ... (rest of the file is unchanged) ...
 func (c *Client) StopAndRemoveContainer(ctx context.Context, containerIdentifier string) error {
 	c.lg.Info().Str("container", containerIdentifier).Msg("stopping and removing container")
 

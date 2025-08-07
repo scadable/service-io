@@ -60,12 +60,14 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.mqtt.address=:1883"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=alirahbar2005@gmail.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
     ports:
       - "80:80"
       - "443:443"
+      - "1883:1883"
       - "8080:8080" # Traefik dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -86,7 +88,7 @@ services:
       NATS_URL: nats://nats-1:4222
       DATABASE_DSN: "postgres://user:password@postgres:5432/servicedb?sslmode=disable"
       LISTEN_ADDR: ":9090"
-      ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest"}'
+      ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest", "mqtt":"registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest"}'
       DO_REGISTRY_TOKEN: "dop_v1_0c287cb3b1706411b5026b7eb1c82e64ae02449f32243ad19971283f17407387"
       TRAEFIK_NETWORK: "service-io_default"
       TRAEFIK_ENTRYPOINT: "websecure"

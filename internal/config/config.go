@@ -32,7 +32,11 @@ func MustLoad() Config {
 
 	sec, _ := strconv.Atoi(getenv("PUBLISH_TIMEOUT_SEC", "5"))
 	adapters := make(AdapterMap)
-	_ = json.Unmarshal([]byte(getenv("ADAPTER_MAP_JSON", `{"random":"rand-adapter:latest"}`)), &adapters)
+	// Add "mqtt" to the default adapter map.
+	_ = json.Unmarshal([]byte(getenv("ADAPTER_MAP_JSON", `{
+					"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest", 
+					"mqtt":"registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest"
+					}`)), &adapters)
 
 	return Config{
 		NATSURL:             url,
