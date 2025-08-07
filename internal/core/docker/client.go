@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
@@ -53,13 +54,16 @@ func New(lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
+// RunAdapter now accepts labels to attach to the container.
 func (c *Client) RunAdapter(
 	ctx context.Context,
 	deviceID, image, natsURL string,
+	labels map[string]string,
 ) (containerID string, err error) {
 	name := "adapter-" + deviceID
 	subject := "devices." + deviceID + ".telemetry"
 
+	// Ensure the container is removed if it already exists.
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 
@@ -67,6 +71,7 @@ func (c *Client) RunAdapter(
 		return "", err
 	}
 
+	// Apply the labels in the container config.
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
 		Image: image,
 		Env: []string{
@@ -74,14 +79,19 @@ func (c *Client) RunAdapter(
 			"SUBJECT=" + subject,
 			"ENABLE_JETSTREAM=true",
 		},
+		Labels: labels, // Apply the Traefik labels here.
 	}, nil, nil, nil, name)
 	if err != nil {
 		return "", err
 	}
 
-	for _, n := range c.networks {
-		if err := c.cli.NetworkConnect(ctx, n, resp.ID, nil); err != nil {
-			c.lg.Warn().Err(err).Str("network", n).Msg("connect adapter to network")
+	// Connect the container to the appropriate network.
+	// This assumes the network is correctly specified in the Traefik labels.
+	netName := labels["traefik.docker.network"]
+	if netName != "" {
+		err = c.cli.NetworkConnect(ctx, netName, resp.ID, &network.EndpointSettings{})
+		if err != nil {
+			c.lg.Warn().Err(err).Str("network", netName).Msg("failed to connect adapter to network")
 		}
 	}
 

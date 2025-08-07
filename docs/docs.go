@@ -149,6 +149,10 @@ const docTemplate = `{
                 "container_name": {
                     "type": "string"
                 },
+                "container_url": {
+                    "description": "Add this line",
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -159,6 +163,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "nats_subject": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "e.g., \"running\", \"stopped\"",
                     "type": "string"
                 },
                 "type": {

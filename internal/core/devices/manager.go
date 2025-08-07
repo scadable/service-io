@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	ncore "service-io/internal/adapters/nats"
+	"service-io/internal/adapters/traefik"
 	"time"
 
 	"service-io/internal/core/docker"
@@ -18,6 +19,7 @@ type Manager struct {
 	db         *gorm.DB
 	nc         *ncore.Client
 	docker     *docker.Client
+	traefik    *traefik.Client
 	natsURL    string
 	adapterMap map[string]string
 	lg         zerolog.Logger
@@ -29,12 +31,14 @@ func New(
 	natsURL string,
 	adapterMap map[string]string,
 	dcli *docker.Client,
+	traefikClient *traefik.Client,
 	lg zerolog.Logger,
 ) (*Manager, error) {
 	return &Manager{
 		db:         db,
 		nc:         nc,
 		docker:     dcli,
+		traefik:    traefikClient,
 		natsURL:    natsURL,
 		adapterMap: adapterMap,
 		lg:         lg.With().Str("component", "manager").Logger(),
@@ -72,6 +76,10 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		CreatedAt:     time.Now().UTC(),
 	}
 
+	// Generate Traefik config
+	labels, url := m.traefik.GenerateConfigForContainer(dev.ContainerName, dev.ID, "1883")
+	dev.ContainerURL = url
+
 	streamName := "DEV_" + dev.ID
 	if err := m.nc.EnsureStream(dev.NatsSubject, streamName); err != nil {
 		return nil, fmt.Errorf("ensure nats stream: %w", err)
@@ -81,7 +89,7 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		return nil, fmt.Errorf("create device record in db: %w", err)
 	}
 
-	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL)
+	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, labels)
 	if err != nil {
 		m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to start container, rolling back")
 		if delErr := m.nc.DeleteStream(streamName); delErr != nil {
@@ -139,7 +147,13 @@ func (m *Manager) RestartRunningDevices(ctx context.Context) error {
 
 	for _, dev := range runningDevices {
 		m.lg.Info().Str("device_id", dev.ID).Msg("restarting device")
-		containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL)
+
+		// Regenerate Traefik config for the restarting container.
+		labels, url := m.traefik.GenerateConfigForContainer(dev.ContainerName, dev.ID, "1883")
+		dev.ContainerURL = url // Update the URL in case the domain config changed.
+
+		// Pass the generated labels to the RunAdapter function.
+		containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, labels)
 		if err != nil {
 			m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to restart device container")
 			dev.Status = "stopped"

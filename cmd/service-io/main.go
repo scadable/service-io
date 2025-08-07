@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	gormadapter "service-io/internal/adapters/gorm"
 	ncore "service-io/internal/adapters/nats"
+	"service-io/internal/adapters/traefik"
 	"syscall"
 
 	"service-io/internal/config"
@@ -31,6 +32,14 @@ func main() {
 	cfg := config.MustLoad()
 	log.Info().Interface("cfg", cfg).Msg("boot")
 
+	// --- Instantiate Traefik Client ---
+	traefikClient := traefik.New(traefik.Config{
+		BaseDomain:   cfg.BaseDomain,
+		EntryPoint:   cfg.TraefikEntryPoint,
+		CertResolver: cfg.TraefikCertResolver,
+		Network:      cfg.TraefikNetwork,
+	})
+
 	db, err := gormadapter.New(cfg.DatabaseDSN, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("gorm connect")
@@ -47,7 +56,7 @@ func main() {
 		log.Fatal().Err(err).Msg("docker connect")
 	}
 
-	mgr, err := devices.New(db, nc, cfg.NATSURL, cfg.Adapters, dcli, log)
+	mgr, err := devices.New(db, nc, cfg.NATSURL, cfg.Adapters, dcli, traefikClient, log)
 	if err != nil {
 		log.Fatal().Err(err).Msg("manager init")
 	}
