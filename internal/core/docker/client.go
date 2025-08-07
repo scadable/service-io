@@ -10,6 +10,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
@@ -53,13 +54,16 @@ func New(lg zerolog.Logger) (*Client, error) {
 	return c, nil
 }
 
+// RunAdapter now accepts MQTT credentials.
 func (c *Client) RunAdapter(
 	ctx context.Context,
-	deviceID, image, natsURL string,
+	deviceID, image, natsURL, mqttUser, mqttPassword string,
+	labels map[string]string,
 ) (containerID string, err error) {
 	name := "adapter-" + deviceID
 	subject := "devices." + deviceID + ".telemetry"
 
+	// Ensure the container is removed if it already exists.
 	_ = c.cli.ContainerRemove(ctx, name,
 		types.ContainerRemoveOptions{Force: true, RemoveVolumes: true})
 
@@ -67,21 +71,35 @@ func (c *Client) RunAdapter(
 		return "", err
 	}
 
+	// Prepare environment variables.
+	env := []string{
+		"NATS_URL=" + natsURL,
+		"DEVICE_ID=" + deviceID,
+		"NATS_SUBJECT=" + subject,
+		"ENABLE_JETSTREAM=true",
+	}
+
+	// Add MQTT credentials if provided.
+	if mqttUser != "" && mqttPassword != "" {
+		env = append(env, "MQTT_USER="+mqttUser, "MQTT_PASSWORD="+mqttPassword)
+	}
+
+	// Apply the labels in the container config.
 	resp, err := c.cli.ContainerCreate(ctx, &container.Config{
-		Image: image,
-		Env: []string{
-			"NATS_URL=" + natsURL,
-			"SUBJECT=" + subject,
-			"ENABLE_JETSTREAM=true",
-		},
+		Image:  image,
+		Env:    env,    // Pass the combined environment variables.
+		Labels: labels, // Apply the Traefik labels here.
 	}, nil, nil, nil, name)
 	if err != nil {
 		return "", err
 	}
 
-	for _, n := range c.networks {
-		if err := c.cli.NetworkConnect(ctx, n, resp.ID, nil); err != nil {
-			c.lg.Warn().Err(err).Str("network", n).Msg("connect adapter to network")
+	// Connect the container to the appropriate network.
+	netName := labels["traefik.docker.network"]
+	if netName != "" {
+		err = c.cli.NetworkConnect(ctx, netName, resp.ID, &network.EndpointSettings{})
+		if err != nil {
+			c.lg.Warn().Err(err).Str("network", netName).Msg("failed to connect adapter to network")
 		}
 	}
 
@@ -92,7 +110,7 @@ func (c *Client) RunAdapter(
 	return resp.ID, nil
 }
 
-// StopAndRemoveContainer stops and removes a container. It's idempotent.
+// ... (rest of the file is unchanged) ...
 func (c *Client) StopAndRemoveContainer(ctx context.Context, containerIdentifier string) error {
 	c.lg.Info().Str("container", containerIdentifier).Msg("stopping and removing container")
 

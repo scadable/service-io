@@ -138,25 +138,49 @@
             "type": "object",
             "properties": {
                 "container_id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "3518d34547496f2a8c4af44be3c71d7f..."
                 },
                 "container_name": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "adapter-EDIVRWCLGGPGCW7M"
+                },
+                "container_url": {
+                    "type": "string",
+                    "example": "EDIVRWCLGGPGCW7M.localhost"
                 },
                 "created_at": {
                     "type": "string"
                 },
                 "id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "EDIVRWCLGGPGCW7M"
                 },
                 "image": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest"
+                },
+                "mqtt_password": {
+                    "description": "The JSON tag is changed from \"-\" to \"mqtt_password,omitempty\" to expose it.",
+                    "type": "string",
+                    "example": "aBc12DeF34gH56iJ"
+                },
+                "mqtt_user": {
+                    "description": "MQTT credentials, only populated for 'mqtt' type devices.",
+                    "type": "string",
+                    "example": "EDIVRWCLGGPGCW7M"
                 },
                 "nats_subject": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "devices.EDIVRWCLGGPGCW7M.telemetry"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "running"
                 },
                 "type": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "mqtt"
                 }
             }
         }

@@ -10,13 +10,17 @@ import (
 type AdapterMap map[string]string
 
 type Config struct {
-	NATSURL        string
-	DatabaseDSN    string
-	ListenAddr     string
-	DevBucket      string
-	PublishTimeout time.Duration
-	Adapters       AdapterMap
-	DORegistryTok  string // digital ocean Personal Access Token
+	NATSURL             string
+	DatabaseDSN         string
+	ListenAddr          string
+	DevBucket           string
+	PublishTimeout      time.Duration
+	Adapters            AdapterMap
+	DORegistryTok       string // digital ocean Personal Access Token
+	TraefikNetwork      string
+	TraefikEntryPoint   string
+	TraefikCertResolver string
+	BaseDomain          string
 }
 
 // MustLoad loads the required settings for the system to operate
@@ -28,16 +32,24 @@ func MustLoad() Config {
 
 	sec, _ := strconv.Atoi(getenv("PUBLISH_TIMEOUT_SEC", "5"))
 	adapters := make(AdapterMap)
-	_ = json.Unmarshal([]byte(getenv("ADAPTER_MAP_JSON", `{"random":"rand-adapter:latest"}`)), &adapters)
+	// Add "mqtt" to the default adapter map.
+	_ = json.Unmarshal([]byte(getenv("ADAPTER_MAP_JSON", `{
+					"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest", 
+					"mqtt":"registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest"
+					}`)), &adapters)
 
 	return Config{
-		NATSURL:        url,
-		DatabaseDSN:    dsn,
-		ListenAddr:     addr,
-		DevBucket:      bucket,
-		PublishTimeout: time.Duration(sec) * time.Second,
-		Adapters:       adapters,
-		DORegistryTok:  getenv("DO_REGISTRY_TOKEN", "dop_v1_9669d538d70b521478b20088690d812ce75270151646a6add8bb4b4a22c6db8f"),
+		NATSURL:             url,
+		DatabaseDSN:         dsn,
+		ListenAddr:          addr,
+		DevBucket:           bucket,
+		PublishTimeout:      time.Duration(sec) * time.Second,
+		Adapters:            adapters,
+		DORegistryTok:       getenv("DO_REGISTRY_TOKEN", "dop_v1_9669d538d70b521478b20088690d812ce75270151646a6add8bb4b4a22c6db8f"),
+		TraefikNetwork:      getenv("TRAEFIK_NETWORK", "service-io_default"),
+		TraefikEntryPoint:   getenv("TRAEFIK_ENTRYPOINT", "websecure"),
+		TraefikCertResolver: getenv("TRAEFIK_CERT_RESOLVER", "myresolver"),
+		BaseDomain:          getenv("BASE_DOMAIN", "io.scadable.com"),
 	}
 }
 

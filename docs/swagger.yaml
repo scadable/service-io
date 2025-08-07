@@ -9,18 +9,39 @@ definitions:
   devices.Device:
     properties:
       container_id:
+        example: 3518d34547496f2a8c4af44be3c71d7f...
         type: string
       container_name:
+        example: adapter-EDIVRWCLGGPGCW7M
+        type: string
+      container_url:
+        example: EDIVRWCLGGPGCW7M.localhost
         type: string
       created_at:
         type: string
       id:
+        example: EDIVRWCLGGPGCW7M
         type: string
       image:
+        example: registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest
+        type: string
+      mqtt_password:
+        description: The JSON tag is changed from "-" to "mqtt_password,omitempty"
+          to expose it.
+        example: aBc12DeF34gH56iJ
+        type: string
+      mqtt_user:
+        description: MQTT credentials, only populated for 'mqtt' type devices.
+        example: EDIVRWCLGGPGCW7M
         type: string
       nats_subject:
+        example: devices.EDIVRWCLGGPGCW7M.telemetry
+        type: string
+      status:
+        example: running
         type: string
       type:
+        example: mqtt
         type: string
     type: object
 host: localhost:9090

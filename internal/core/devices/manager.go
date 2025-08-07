@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	ncore "service-io/internal/adapters/nats"
+	"service-io/internal/adapters/traefik"
 	"time"
 
 	"service-io/internal/core/docker"
@@ -18,6 +19,7 @@ type Manager struct {
 	db         *gorm.DB
 	nc         *ncore.Client
 	docker     *docker.Client
+	traefik    *traefik.Client
 	natsURL    string
 	adapterMap map[string]string
 	lg         zerolog.Logger
@@ -29,12 +31,14 @@ func New(
 	natsURL string,
 	adapterMap map[string]string,
 	dcli *docker.Client,
+	traefikClient *traefik.Client,
 	lg zerolog.Logger,
 ) (*Manager, error) {
 	return &Manager{
 		db:         db,
 		nc:         nc,
 		docker:     dcli,
+		traefik:    traefikClient,
 		natsURL:    natsURL,
 		adapterMap: adapterMap,
 		lg:         lg.With().Str("component", "manager").Logger(),
@@ -72,6 +76,16 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		CreatedAt:     time.Now().UTC(),
 	}
 
+	// If it's an MQTT adapter, generate and set credentials.
+	if devType == "mqtt" {
+		dev.MQTTUser = devID // Use the device ID as the username
+		dev.MQTTPassword = rand.Password(16)
+	}
+
+	// Generate Traefik config
+	labels, url := m.traefik.GenerateConfigForContainer(dev.ContainerName, dev.ID, "1883")
+	dev.ContainerURL = url
+
 	streamName := "DEV_" + dev.ID
 	if err := m.nc.EnsureStream(dev.NatsSubject, streamName); err != nil {
 		return nil, fmt.Errorf("ensure nats stream: %w", err)
@@ -81,7 +95,8 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 		return nil, fmt.Errorf("create device record in db: %w", err)
 	}
 
-	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL)
+	// Pass MQTT credentials to RunAdapter. They will be empty for non-MQTT types.
+	containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, dev.MQTTUser, dev.MQTTPassword, labels)
 	if err != nil {
 		m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to start container, rolling back")
 		if delErr := m.nc.DeleteStream(streamName); delErr != nil {
@@ -101,6 +116,39 @@ func (m *Manager) AddDevice(ctx context.Context, devType string) (*Device, error
 	return dev, nil
 }
 
+// RestartRunningDevices finds all devices with "running" status and starts them.
+func (m *Manager) RestartRunningDevices(ctx context.Context) error {
+	m.lg.Info().Msg("restarting any previously running devices...")
+	var runningDevices []Device
+	if err := m.db.Where("status = ?", "running").Find(&runningDevices).Error; err != nil {
+		return fmt.Errorf("could not query running devices: %w", err)
+	}
+
+	for _, dev := range runningDevices {
+		m.lg.Info().Str("device_id", dev.ID).Msg("restarting device")
+
+		// Regenerate Traefik config for the restarting container.
+		labels, url := m.traefik.GenerateConfigForContainer(dev.ContainerName, dev.ID, "1883")
+		dev.ContainerURL = url // Update the URL in case the domain config changed.
+
+		// Pass the generated labels and credentials to the RunAdapter function.
+		containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL, dev.MQTTUser, dev.MQTTPassword, labels)
+		if err != nil {
+			m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to restart device container")
+			dev.Status = "stopped"
+		} else {
+			dev.ContainerID = containerID
+		}
+
+		if err := m.db.Save(&dev).Error; err != nil {
+			m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to update device record after restart attempt")
+		}
+	}
+	m.lg.Info().Int("count", len(runningDevices)).Msg("device restart process complete")
+	return nil
+}
+
+// ... (rest of the file is unchanged) ...
 // RemoveDevice stops the container and marks the device as "stopped".
 func (m *Manager) RemoveDevice(ctx context.Context, deviceID string) error {
 	var dev Device
@@ -126,32 +174,6 @@ func (m *Manager) RemoveDevice(ctx context.Context, deviceID string) error {
 	}
 
 	m.lg.Info().Str("device_id", deviceID).Msg("device stopped successfully")
-	return nil
-}
-
-// RestartRunningDevices finds all devices with "running" status and starts them.
-func (m *Manager) RestartRunningDevices(ctx context.Context) error {
-	m.lg.Info().Msg("restarting any previously running devices...")
-	var runningDevices []Device
-	if err := m.db.Where("status = ?", "running").Find(&runningDevices).Error; err != nil {
-		return fmt.Errorf("could not query running devices: %w", err)
-	}
-
-	for _, dev := range runningDevices {
-		m.lg.Info().Str("device_id", dev.ID).Msg("restarting device")
-		containerID, err := m.docker.RunAdapter(ctx, dev.ID, dev.Image, m.natsURL)
-		if err != nil {
-			m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to restart device container")
-			dev.Status = "stopped"
-		} else {
-			dev.ContainerID = containerID
-		}
-
-		if err := m.db.Save(&dev).Error; err != nil {
-			m.lg.Error().Err(err).Str("device_id", dev.ID).Msg("failed to update device record after restart attempt")
-		}
-	}
-	m.lg.Info().Int("count", len(runningDevices)).Msg("device restart process complete")
 	return nil
 }
 
