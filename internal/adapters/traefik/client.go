@@ -42,22 +42,29 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 
 		labels = map[string]string{
 			"traefik.enable": "true",
+
 			// TCP Router with TLS enabled
 			fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):             fmt.Sprintf("HostSNI(`%s`)", host),
 			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      c.entryPoint,
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName):      "mqtt-only@file",
-			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):          containerName,
+			// Advertise ALPN "mqtt" so clients using --tls-alpn mqtt succeed
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.alpn", containerName): "mqtt",
+			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):  containerName,
+
 			// TCP Service
 			fmt.Sprintf("traefik.tcp.services.%s.loadbalancer.server.port", containerName): containerPort,
+
 			// Network
 			"traefik.docker.network": c.network,
-			// (optional) encourage wildcard cert issuance to avoid LE per-host limits:
+
+			// Encourage wildcard cert issuance to avoid LE per-host limits
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].main", containerName): fmt.Sprintf("*.%s", c.baseDomain),
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].sans", containerName): c.baseDomain,
 		}
 		labels[fmt.Sprintf("traefik.tcp.routers.%s.priority", containerName)] = "100"
+
 		c.lg.Info().
 			Str("mode", "production").
 			Str("host", host).
@@ -74,8 +81,10 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 		fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):        "HostSNI(`*`)",
 		fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName): "mqtt",
 		fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):     containerName,
+
 		// TCP Service
 		fmt.Sprintf("traefik.tcp.services.%s.loadbalancer.server.port", containerName): containerPort,
+
 		// Network
 		"traefik.docker.network": c.network,
 	}
