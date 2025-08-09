@@ -38,14 +38,14 @@ func New(cfg Config) *Client {
 func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPort string) (labels map[string]string, url string) {
 	// --- Production Config (using a real domain) ---
 	if c.baseDomain != "localhost" {
-		host := fmt.Sprintf("%s.%s", containerName, c.baseDomain)
-		url = fmt.Sprintf("mqtts://%s:1883", host) // Secure MQTT protocol
+		host := fmt.Sprintf("%s.%s", deviceID, c.baseDomain)
+		url = fmt.Sprintf("mqtts://%s:%s", host, containerPort)
 
 		labels = map[string]string{
 			"traefik.enable": "true",
 			// TCP Router with TLS enabled
 			fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):             fmt.Sprintf("HostSNI(`%s`)", host),
-			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      "mqtt",
+			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      c.entryPoint,
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
 			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):          containerName,
@@ -53,6 +53,9 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			fmt.Sprintf("traefik.tcp.services.%s.loadbalancer.server.port", containerName): containerPort,
 			// Network
 			"traefik.docker.network": c.network,
+			// (optional) encourage wildcard cert issuance to avoid LE per-host limits:
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].main", containerName): fmt.Sprintf("*.%s", c.baseDomain),
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].sans", containerName): c.baseDomain,
 		}
 		c.lg.Info().Str("mode", "production").Str("host", host).Msg("generated secure TLS routing labels")
 		return labels, url
