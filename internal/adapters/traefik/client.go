@@ -36,7 +36,6 @@ func New(cfg Config) *Client {
 // GenerateConfigForContainer creates Docker labels for routing to an adapter.
 // It dynamically switches between secure (TLS) and insecure (TCP) configs.
 func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPort string) (labels map[string]string, url string) {
-	// --- Production Config (using a real domain) ---
 	if c.baseDomain != "localhost" {
 		host := fmt.Sprintf("%s.%s", deviceID, c.baseDomain)
 		url = fmt.Sprintf("mqtts://%s:%s", host, containerPort)
@@ -48,10 +47,8 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      c.entryPoint,
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName):      "mqtt-only@file",
 			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):          containerName,
-
-			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName): "mqtt-only@file",
-
 			// TCP Service
 			fmt.Sprintf("traefik.tcp.services.%s.loadbalancer.server.port", containerName): containerPort,
 			// Network
@@ -61,7 +58,10 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].sans", containerName): c.baseDomain,
 		}
 		labels[fmt.Sprintf("traefik.tcp.routers.%s.priority", containerName)] = "100"
-		c.lg.Info().Str("mode", "production").Str("host", host).Msg("generated secure TLS routing labels")
+		c.lg.Info().
+			Str("mode", "production").
+			Str("host", host).
+			Msg("generated secure TLS routing labels")
 		return labels, url
 	}
 
