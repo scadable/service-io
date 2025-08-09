@@ -49,6 +49,9 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
 			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):          containerName,
+
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName): "mqtt-only@file",
+
 			// TCP Service
 			fmt.Sprintf("traefik.tcp.services.%s.loadbalancer.server.port", containerName): containerPort,
 			// Network
