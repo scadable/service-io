@@ -57,6 +57,7 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].main", containerName): fmt.Sprintf("*.%s", c.baseDomain),
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].sans", containerName): c.baseDomain,
 		}
+		labels[fmt.Sprintf("traefik.tcp.routers.%s.priority", containerName)] = "100"
 		c.lg.Info().Str("mode", "production").Str("host", host).Msg("generated secure TLS routing labels")
 		return labels, url
 	}
