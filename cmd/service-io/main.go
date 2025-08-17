@@ -35,10 +35,9 @@ func main() {
 	// --- Instantiate Traefik Client ---
 	traefikClient := traefik.New(traefik.Config{
 		BaseDomain:   cfg.BaseDomain,
-		EntryPoint:   cfg.TraefikEntryPoint,
 		CertResolver: cfg.TraefikCertResolver,
 		Network:      cfg.TraefikNetwork,
-		Logger:       log, // Pass the logger here
+		Logger:       log,
 	})
 
 	db, err := gormadapter.New(cfg.DatabaseDSN, log)
