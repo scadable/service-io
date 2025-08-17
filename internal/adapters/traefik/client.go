@@ -50,7 +50,7 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
 			// This assumes you have a TLS option named 'mqtt' defined in your traefik_mqtt.yaml.
-			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName): "mqtt@file",
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName): "mqtt-only@file",
 			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):     containerName,
 
 			// TCP Service
