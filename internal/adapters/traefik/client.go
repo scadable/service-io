@@ -45,10 +45,10 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 
 			// TCP Router with TLS enabled
 			fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):             fmt.Sprintf("HostSNI(`%s`)", host),
-			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      c.entryPoint,
+			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      "mqtt,mqtts",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
-			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName):      "mqtt-only@file",
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName):      "default@file",
 			// Advertise ALPN "mqtt" so clients using --tls-alpn mqtt succeed
 			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName): containerName,
 
