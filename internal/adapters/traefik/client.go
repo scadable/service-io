@@ -8,25 +8,24 @@ import (
 )
 
 type Client struct {
-	baseDomain   string
-	entryPoint   string
+	baseDomain string
+	// entryPoint is no longer needed here as it's determined by the router
 	certResolver string
 	network      string
-	lg           zerolog.Logger // Add logger to the client
+	lg           zerolog.Logger
 }
 
 type Config struct {
-	BaseDomain   string
-	EntryPoint   string
+	BaseDomain string
+	// EntryPoint can be removed from here
 	CertResolver string
 	Network      string
-	Logger       zerolog.Logger // Pass logger in config
+	Logger       zerolog.Logger
 }
 
 func New(cfg Config) *Client {
 	return &Client{
 		baseDomain:   cfg.BaseDomain,
-		entryPoint:   cfg.EntryPoint,
 		certResolver: cfg.CertResolver,
 		network:      cfg.Network,
 		lg:           cfg.Logger.With().Str("component", "traefik-client").Logger(),
@@ -38,19 +37,21 @@ func New(cfg Config) *Client {
 func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPort string) (labels map[string]string, url string) {
 	if c.baseDomain != "localhost" {
 		host := fmt.Sprintf("%s.%s", deviceID, c.baseDomain)
-		url = fmt.Sprintf("mqtts://%s:%s", host, containerPort)
+		// ✅ FIX: The public URL must point to Traefik's public MQTTS port (8883).
+		url = fmt.Sprintf("mqtts://%s:8883", host)
 
 		labels = map[string]string{
 			"traefik.enable": "true",
 
 			// TCP Router with TLS enabled
-			fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):             fmt.Sprintf("HostSNI(`%s`)", host),
-			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      "mqtt,mqtts",
+			fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName): fmt.Sprintf("HostSNI(`%s`)", host),
+			// ✅ FIX: The secure router MUST only listen on the secure 'mqtts' entrypoint.
+			fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName):      "mqtts",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls", containerName):              "true",
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.certresolver", containerName): c.certResolver,
-			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName):      "mqtt@file",
-			// Advertise ALPN "mqtt" so clients using --tls-alpn mqtt succeed
-			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName): containerName,
+			// This assumes you have a TLS option named 'mqtt' defined in your traefik_mqtt.yaml.
+			fmt.Sprintf("traefik.tcp.routers.%s.tls.options", containerName): "mqtt@file",
+			fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):     containerName,
 
 			// TCP Service
 			fmt.Sprintf("traefik.tcp.services.%s.loadbalancer.server.port", containerName): containerPort,
@@ -58,11 +59,10 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 			// Network
 			"traefik.docker.network": c.network,
 
-			// Encourage wildcard cert issuance to avoid LE per-host limits
+			// Wildcard certificate configuration (this part is good)
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].main", containerName): fmt.Sprintf("*.%s", c.baseDomain),
 			fmt.Sprintf("traefik.tcp.routers.%s.tls.domains[0].sans", containerName): c.baseDomain,
 		}
-		labels[fmt.Sprintf("traefik.tcp.routers.%s.priority", containerName)] = "100"
 
 		c.lg.Info().
 			Str("mode", "production").
@@ -72,12 +72,14 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 	}
 
 	// --- Local Development Config (using localhost) ---
-	url = fmt.Sprintf("mqtt://%s:1883", c.baseDomain) // Plain MQTT protocol
+	// ✅ FIX: The client connects to Traefik's 'mqtt' port, not the container's port.
+	url = fmt.Sprintf("mqtt://localhost:1883")
 
 	labels = map[string]string{
 		"traefik.enable": "true",
 		// TCP Router with no TLS
-		fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):        "HostSNI(`localhost`)",
+		// ✅ FIX: Plain TCP has no SNI. Use HostSNI(`*`) to catch all traffic on the entrypoint.
+		fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):        "HostSNI(`*`)",
 		fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName): "mqtt",
 		fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):     containerName,
 

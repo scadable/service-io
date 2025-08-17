@@ -1,0 +1,7 @@
+tls:
+  options:
+    mqtt:
+      minVersion: VersionTLS12
+      sniStrict: true
+      alpnProtocols:
+        - "mqtt"

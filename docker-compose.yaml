@@ -53,51 +53,71 @@ services:
       - n3-data:/data/jetstream
 
   traefik:
-    image: traefik:v3.0
+    image: traefik:latest
+    container_name: traefik
     command:
+      - "--accesslog=true"
+      - "--log.level=DEBUG"
       - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
       - "--entrypoints.mqtt.address=:1883"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=alirahbar2005@gmail.com"
+      - "--entrypoints.mqtts.address=:8883"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=digitalocean"
+      - "--certificatesresolvers.myresolver.acme.email=alirahbar2005@gmail.com" # Change this email
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--providers.file.filename=/etc/traefik/dynamic/traefik_mqtt.yml"
+      - "--providers.file.watch=true"
+
+    environment:
+      - DO_AUTH_TOKEN=dop_v1_d97af8b5d18661923aceb56921507fb83db08cfefd4e289d59ec61bd30dce1b4
     ports:
-      - "80:80"
-      - "443:443"
       - "1883:1883"
-      - "8080:8080" # Traefik dashboard
+      - "8883:8883"
+      - "8085:8080"
+
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./letsencrypt:/letsencrypt
+      - /Users/ali/GolandProjects/service-io/docker-compose.yaml:/etc/traefik/dynamic/traefik_mqtt.yaml:ro
+      - /root/letsencrypt:/letsencrypt
+
+    restart: unless-stopped
+
 
   # ──────────── Device-onboarding API ────────────
-  service-io:
-    build: .
-    depends_on:
-      - nats-1
-      - nats-2
-      - nats-3
-      - postgres
-      - traefik
+  # In service-io/docker-compose.yaml
 
-    restart: on-failure
-    environment:
-      NATS_URL: nats://nats-1:4222
-      DATABASE_DSN: "postgres://user:password@postgres:5432/servicedb?sslmode=disable"
-      LISTEN_ADDR: ":9090"
-      ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest", "mqtt":"registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest"}'
-      DO_REGISTRY_TOKEN: "dop_v1_0c287cb3b1706411b5026b7eb1c82e64ae02449f32243ad19971283f17407387"
-      TRAEFIK_NETWORK: "service-io_default"
-      TRAEFIK_ENTRYPOINT: "websecure"
-      TRAEFIK_CERT_RESOLVER: "myresolver"
-      BASE_DOMAIN: "localhost"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    ports:
-      - "9090:9090"
+    # ... (postgres, nats, traefik services) ...
+
+    # ──────────── Device-onboarding API ────────────
+  service-io:
+      build: .
+      depends_on:
+        - nats-1
+        - nats-2
+        - nats-3
+        - postgres
+        - traefik
+
+      restart: on-failure
+      environment:
+        NATS_URL: nats://nats-1:4222
+        DATABASE_DSN: "postgres://user:password@postgres:5432/servicedb?sslmode=disable"
+        LISTEN_ADDR: ":9090"
+        ADAPTER_MAP_JSON: '{"random":"registry.digitalocean.com/scadable-container-registry/adapter-rand:latest", "mqtt":"registry.digitalocean.com/scadable-container-registry/adapter-mqtt:latest"}'
+        DO_REGISTRY_TOKEN: "dop_v1_0c287cb3b1706411b5026b7eb1c82e64ae02449f32243ad19971283f17407387"
+        TRAEFIK_NETWORK: "service-io_default"
+        # ✅ FIX: TRAEFIK_ENTRYPOINT is not needed for TCP routers. You can remove this line.
+        # TRAEFIK_ENTRYPOINT: "websecure"
+        TRAEFIK_CERT_RESOLVER: "myresolver"
+        # ✅ FIX: Change this to your actual domain to enable MQTTS.
+        # When this is "localhost", it will generate insecure labels.
+        BASE_DOMAIN: "io.scadable.com" # Or whatever your domain is
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+      ports:
+        - "9090:9090"
 
 volumes:
   postgres-data:
