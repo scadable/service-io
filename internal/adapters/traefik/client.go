@@ -77,7 +77,7 @@ func (c *Client) GenerateConfigForContainer(containerName, deviceID, containerPo
 	labels = map[string]string{
 		"traefik.enable": "true",
 		// TCP Router with no TLS
-		fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):        "HostSNI(`*`)",
+		fmt.Sprintf("traefik.tcp.routers.%s.rule", containerName):        "HostSNI(`localhost`)",
 		fmt.Sprintf("traefik.tcp.routers.%s.entrypoints", containerName): "mqtt",
 		fmt.Sprintf("traefik.tcp.routers.%s.service", containerName):     containerName,
 

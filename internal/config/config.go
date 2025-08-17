@@ -47,7 +47,7 @@ func MustLoad() Config {
 		Adapters:            adapters,
 		DORegistryTok:       getenv("DO_REGISTRY_TOKEN", "dop_v1_9669d538d70b521478b20088690d812ce75270151646a6add8bb4b4a22c6db8f"),
 		TraefikNetwork:      getenv("TRAEFIK_NETWORK", "service-io_default"),
-		TraefikEntryPoint:   getenv("TRAEFIK_ENTRYPOINT", "websecure"),
+		TraefikEntryPoint:   getenv("TRAEFIK_ENTRYPOINT", "mqtt"),
 		TraefikCertResolver: getenv("TRAEFIK_CERT_RESOLVER", "myresolver"),
 		BaseDomain:          getenv("BASE_DOMAIN", "io.scadable.com"),
 	}
