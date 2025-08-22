@@ -1,0 +1,57 @@
+# Headless Service for stable network identities for the RAW cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-cluster-raw
+  namespace: scadable-core
+spec:
+  selector:
+    app: nats-cluster-raw
+  clusterIP: None
+  ports:
+    - name: client
+      port: 4222
+    - name: cluster
+      port: 6222
+    - name: monitor
+      port: 8222
+---
+# StatefulSet for the RAW NATS cluster pods
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats-cluster-raw
+  namespace: scadable-core
+spec:
+  selector:
+    matchLabels:
+      app: nats-cluster-raw
+  serviceName: nats-cluster-raw
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: nats-cluster-raw
+    spec:
+      containers:
+        - name: nats
+          image: nats:2.10-alpine
+          args:
+            - "--name=$(POD_NAME)"
+            - "--jetstream"
+            - "--cluster_name=scadable-raw"
+            - "--cluster=nats://0.0.0.0:6222"
+            # Route configuration for the RAW cluster
+            - "--routes=nats://nats-cluster-raw-0.nats-cluster-raw.scadable-core.svc.cluster.local:6222,nats://nats-cluster-raw-1.nats-cluster-raw.scadable-core.svc.cluster.local:6222,nats://nats-cluster-raw-2.nats-cluster-raw.scadable-core.svc.cluster.local:6222"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: cluster
+              containerPort: 6222
+            - name: monitor
+              containerPort: 8222
